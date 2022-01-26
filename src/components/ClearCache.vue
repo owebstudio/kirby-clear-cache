@@ -109,8 +109,11 @@ export default {
             this.dirs[type] = [];
           }
 
+          if (type === 'other' && dir === 'lock') {
+            this.$store.dispatch("content/clear");
+          }
+
           this.$store.dispatch("notification/success", ":)");
-          this.$store.dispatch("content/clear");
         }
       } catch (error) {
         throw error;
