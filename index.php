@@ -1,14 +1,14 @@
 <?php
 
-use ClickToNext\ClearCache;
+use KirbyNext\ClearCache;
 use Kirby\Cms\App as Kirby;
 use Kirby\Exception\Exception;
 
 load([
-    'clicktonext\\clearcache' => __DIR__ . '/lib/ClearCache.php'
+    'kirbynext\\clearcache' => __DIR__ . '/lib/ClearCache.php'
 ]);
 
-Kirby::plugin('clicktonext/clear-cache', [
+Kirby::plugin('kirbynext/clear-cache', [
     'areas' => [
         'clear-cache' => function () {
             return [

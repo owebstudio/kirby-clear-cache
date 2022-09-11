@@ -1,6 +1,6 @@
 import View from "./components/ClearCache.vue";
 
-panel.plugin("clicktonext/clear-cache", {
+panel.plugin("kirbynext/clear-cache", {
   components: {
     clearcache: View,
   },

@@ -1,6 +1,6 @@
 <?php
 
-namespace ClickToNext;
+namespace KirbyNext;
 
 use Kirby\Exception\Exception;
 use Kirby\Filesystem\Dir;

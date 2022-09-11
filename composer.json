@@ -1,27 +1,28 @@
 {
-  "name": "clicktonext/kirby-clear-cache",
+  "name": "kirbynext/kirby-clear-cache",
   "description": "This plugin allows you to clean temporary files and folders such as cache, media, .lock and .logins on your website.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "kirby-plugin",
   "license": "MIT",
   "keywords": [
-    "clicktonext",
+    "kirbynext",
     "kirby",
     "kirby-3",
     "kirby3-plugin",
     "kirby-plugin",
+    "kirbynext-plugin",
     "kirby-cache",
     "cache-clear"
   ],
-  "homepage": "https://clicktonext.com",
+  "homepage": "https://kirbynext.com",
   "support": {
-    "email": "support@clicktonext.com"
+    "email": "support@kirbynext.com"
   },
   "authors": [
     {
-      "name": "Click to Next",
-      "email": "contact@clicktonext.com",
-      "homepage": "https://clicktonext.com"
+      "name": "Kirby Next",
+      "email": "contact@kirbynext.com",
+      "homepage": "https://kirbynext.com"
     }
   ],
   "require": {
