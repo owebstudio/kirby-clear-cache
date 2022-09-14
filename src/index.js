@@ -1,6 +1,6 @@
 import View from "./components/ClearCache.vue";
 
-panel.plugin("kirbynext/clear-cache", {
+panel.plugin("owebstudio/clear-cache", {
   components: {
     clearcache: View,
   },
