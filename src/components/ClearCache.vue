@@ -1,6 +1,6 @@
 <template>
-  <k-inside>
-    <k-view class="k-clearcache-view">
+  <k-panel-inside>
+    <div class="k-clearcache-view">
       <k-header>Clear cache <small>[temporary files and directories]</small></k-header>
       <k-info-field text="The files and folders listed here are temporary. It is recreated when deleted. There is no harm in deleting it."/>
 
@@ -74,8 +74,8 @@
           No temporary files/directories yet
         </k-empty>
       </k-field>
-    </k-view>
-  </k-inside>
+    </div>
+  </k-panel-inside>
 </template>
 
 <script>
