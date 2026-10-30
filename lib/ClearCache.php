@@ -5,6 +5,7 @@ namespace Oweb;
 use Kirby\Exception\Exception;
 use Kirby\Filesystem\Dir;
 use Kirby\Filesystem\F;
+use Kirby\Panel\Panel;
 
 class ClearCache
 {
@@ -16,6 +17,27 @@ class ClearCache
     public static function relativePath(string $root, string $dir)
     {
         return str_replace(kirby()->root('index'), '', kirby()->root($root)) . '/' . $dir;
+    }
+
+    /**
+     * Admins can always clear, unless the area is disabled for their role.
+     * Other roles need the `owebstudio.clear-cache.clear` permission.
+     *
+     * @return bool
+     */
+    public static function canClear(): bool
+    {
+        $user = kirby()->user();
+
+        if (Panel::hasAccess($user, 'clear-cache') === false) {
+            return false;
+        }
+
+        if ($user->isAdmin() === true) {
+            return true;
+        }
+
+        return $user->role()->permissions()->for('owebstudio.clear-cache', 'clear') === true;
     }
 
     /**
