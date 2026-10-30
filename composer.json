@@ -8,7 +8,6 @@
     "owebstudio",
     "owebstudio-plugin",
     "kirby",
-    "kirby3",
     "kirby4",
     "kirby5",
     "kirby-plugin",
@@ -36,7 +35,10 @@
     "sort-packages": true
   },
   "extra": {
-    "installer-name": "kirby-cache-clear"
+    "installer-name": "kirby-cache-clear",
+    "kirby": {
+      "compatible": "^4.0 || ^5.0"
+    }
   },
   "minimum-stability": "dev",
   "prefer-stable": true
