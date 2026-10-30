@@ -54,14 +54,16 @@ Kirby::plugin('owebstudio/clear-cache', [
                     $type = get('type');
                     $dir = get('dir');
 
-                    if (empty($type) === true) {
+                    if (empty($type) === true || is_string($type) === false) {
                         throw new Exception('Invalid request!');
                     }
 
                     if (empty($dir) === true) {
                         ClearCache::clearType($type);
-                    } else {
+                    } elseif (is_string($dir) === true) {
                         ClearCache::clearDir($type, $dir);
+                    } else {
+                        throw new Exception('Invalid directory!');
                     }
 
                     return true;
