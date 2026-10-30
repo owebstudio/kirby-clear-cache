@@ -110,10 +110,10 @@ export default {
           }
 
           if (type === 'other' && dir === 'lock') {
-            this.$store.dispatch("content/clear");
+            this.$store?.dispatch("content/clear");
           }
 
-          this.$store.dispatch("notification/success", ":)");
+          this.$panel.notification.success(":)");
         }
       } catch (error) {
         throw error;
