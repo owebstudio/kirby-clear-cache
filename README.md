@@ -1,3 +1,5 @@
+![Clear Cache, a Kirby plugin by oweb studio. Clear the cache, media and temporary files from the Panel.](.github/cover.png)
+
 # Kirby Clear Cache
 
 This plugin allows you to clean temporary files and folders such as cache, media, .lock and .logins on your website.
