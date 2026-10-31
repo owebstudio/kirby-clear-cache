@@ -2,10 +2,14 @@
 
 namespace Oweb;
 
+use Kirby\Cache\FileCache;
+use Kirby\Cache\NullCache;
 use Kirby\Exception\Exception;
 use Kirby\Filesystem\Dir;
 use Kirby\Filesystem\F;
 use Kirby\Toolkit\A;
+use ReflectionClass;
+use Throwable;
 
 class ClearCache
 {
@@ -17,6 +21,20 @@ class ClearCache
     public static function relativePath(string $root, string $dir)
     {
         return str_replace(kirby()->root('index'), '', kirby()->root($root)) . '/' . $dir;
+    }
+
+    /**
+     * The path from the index folder, or the full path for folders outside of it
+     *
+     * @param string $path
+     * @return string
+     */
+    public static function relative(string $path): string
+    {
+        $index = static::realpath(kirby()->root('index'));
+        $path  = static::realpath($path) ?? str_replace('\\', '/', $path);
+
+        return str_starts_with($path, $index . '/') === true ? substr($path, strlen($index)) : $path;
     }
 
     /**
@@ -70,11 +88,156 @@ class ClearCache
     }
 
     /**
+     * The caches of Kirby, the config and the plugins
+     *
      * @return array
      */
     public static function cacheDirs()
     {
-        return static::folders('cache');
+        $dirs = [];
+
+        foreach (static::cacheNames() as $name) {
+            try {
+                $cache = kirby()->cache($name);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if (
+                $cache instanceof NullCache ||
+                ($cache instanceof FileCache && static::containsRoot($cache->root()) === true)
+            ) {
+                continue;
+            }
+
+            $paths = $cache instanceof FileCache ? static::cachePaths($cache) : [];
+
+            $dirs[$name] = [
+                'name' => $name,
+                'path' => $paths,
+                'text' => match ($name) {
+                    'pages'   => 'Pages',
+                    'uuid'    => 'UUIDs',
+                    'updates' => 'Updates',
+                    default   => $name
+                },
+                'info' => match (true) {
+                    $cache instanceof FileCache === false => preg_replace('/Cache$/', '', (new ReflectionClass($cache))->getShortName()),
+                    count($paths) > 1                    => static::relativePath('cache', '*/' . static::cacheKey($cache)),
+                    default                              => static::relative($cache->root())
+                }
+            ];
+        }
+
+        return $dirs;
+    }
+
+    /**
+     * Names of all active caches, without the index
+     * of unsaved changes that Kirby rebuilds on its own
+     *
+     * @return array
+     */
+    public static function cacheNames(): array
+    {
+        $kirby = kirby();
+        $names = array_keys($kirby->core()->caches());
+
+        foreach ($kirby->options() as $key => $value) {
+            if ($key === 'cache' && is_array($value) === true) {
+                $names = [...$names, ...array_keys($value)];
+            } elseif (str_starts_with($key, 'cache.') === true) {
+                $names[] = substr($key, 6);
+            }
+        }
+
+        foreach ($kirby->plugins() as $plugin) {
+            $prefix  = $plugin->prefix();
+            $options = $kirby->option($prefix . '.cache');
+
+            if (
+                $options === true ||
+                (is_array($options) === true && array_intersect(array_keys($options), ['active', 'type', 'root', 'prefix', 'extension']) !== [])
+            ) {
+                $names[] = $prefix;
+            } elseif (is_array($options) === true) {
+                foreach (array_keys($options) as $key) {
+                    $names[] = $prefix . '.' . $key;
+                }
+            }
+        }
+
+        return array_values(array_diff(array_unique($names), ['changes']));
+    }
+
+    /**
+     * The folders of a file cache, for the current domain
+     * as well as for other domains and the command line
+     *
+     * @param FileCache $cache
+     * @return array
+     */
+    public static function cachePaths(FileCache $cache): array
+    {
+        $key = static::cacheKey($cache);
+
+        if ($key === null) {
+            return [$cache->root()];
+        }
+
+        $paths = [];
+
+        foreach (Dir::dirs(kirby()->root('cache'), null, true) as $dir) {
+            if (is_dir($dir . '/' . $key) === true) {
+                $paths[] = $dir . '/' . $key;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * Path of the cache inside the folder of the current domain,
+     * or null if the cache has its own root or prefix
+     *
+     * @param FileCache $cache
+     * @return string|null
+     */
+    public static function cacheKey(FileCache $cache): string|null
+    {
+        $domain = static::realpath(kirby()->root('cache')) . '/' . str_replace(['/', ':'], '_', kirby()->system()->indexUrl());
+        $root   = static::realpath($cache->root());
+
+        if ($root === null || str_starts_with($root, $domain . '/') === false) {
+            return null;
+        }
+
+        return substr($root, strlen($domain) + 1);
+    }
+
+    /**
+     * Empties a cache for all domains
+     *
+     * @param string $name
+     * @return void
+     */
+    public static function clearCache(string $name): void
+    {
+        $cache = kirby()->cache($name);
+
+        if ($cache instanceof FileCache && static::containsRoot($cache->root()) === true) {
+            throw new Exception('Invalid directory!');
+        }
+
+        $cache->flush();
+
+        if ($cache instanceof FileCache) {
+            foreach (static::cachePaths($cache) as $path) {
+                if (static::isRemovable($path, kirby()->root('cache')) === true) {
+                    static::remove($path);
+                }
+            }
+        }
     }
 
     /**
@@ -155,6 +318,13 @@ class ClearCache
         foreach (static::props()[$type] ?? [] as $dir) {
             static::clearDir($type, $dir);
         }
+
+        // folders of removed caches and caches with their own prefix
+        if ($type === 'cache') {
+            foreach (static::folders('cache') as $dir) {
+                static::remove($dir['path']);
+            }
+        }
     }
 
     /**
@@ -175,6 +345,8 @@ class ClearCache
 
         switch ($type) {
             case 'cache':
+                static::clearCache($dir['name']);
+                break;
             case 'media':
                 if (static::isRemovable($dir['path'], kirby()->root($type)) === false) {
                     throw new Exception('Invalid directory!');
@@ -183,8 +355,8 @@ class ClearCache
                 static::remove($dir['path']);
 
                 // cached pages would link to thumbs whose jobs are gone
-                if ($type === 'media' && in_array($dir['name'], ['panel', 'plugins'], true) === false) {
-                    kirby()->cache('pages')->flush();
+                if (in_array($dir['name'], ['panel', 'plugins'], true) === false) {
+                    static::clearCache('pages');
                 }
                 break;
             case 'other':
@@ -211,9 +383,10 @@ class ClearCache
     public static function isRemovable(string $path, string $root): bool
     {
         $root = static::realpath($root);
+        $link = is_link($path);
 
         // links are removed, never followed
-        $path = is_link($path) === true
+        $path = $link === true
             ? static::realpath(dirname($path)) . '/' . basename($path)
             : static::realpath($path);
 
@@ -221,19 +394,33 @@ class ClearCache
             return false;
         }
 
-        foreach (kirby()->roots()->toArray() as $key => $protected) {
+        return $link === true || static::containsRoot($path) === false;
+    }
+
+    /**
+     * Checks if the path is or contains a root of the site
+     * other than the cache and media folders
+     *
+     * @param string $path
+     * @return bool
+     */
+    public static function containsRoot(string $path): bool
+    {
+        $path = static::realpath($path) ?? $path;
+
+        foreach (kirby()->roots()->toArray() as $key => $root) {
             if (in_array($key, ['cache', 'media'], true) === true) {
                 continue;
             }
 
-            $protected = static::realpath($protected);
+            $root = static::realpath($root);
 
-            if ($protected !== null && ($protected === $path || str_starts_with($protected, $path . '/') === true)) {
-                return false;
+            if ($root !== null && ($root === $path || str_starts_with($root, $path . '/') === true)) {
+                return true;
             }
         }
 
-        return true;
+        return false;
     }
 
     /**
