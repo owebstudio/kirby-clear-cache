@@ -312,6 +312,53 @@ class ClearCache
     }
 
     /**
+     * The `clear-cache` command of the Kirby CLI
+     *
+     * @param \Kirby\CLI\CLI $cli
+     * @return void
+     * @throws Exception
+     */
+    public static function command($cli): void
+    {
+        $type = $cli->arg('type');
+        $dir  = $cli->arg('name');
+
+        if (empty($type) === true) {
+            $stats = static::stats();
+            $rows  = [];
+
+            foreach (static::props() as $type => $dirs) {
+                foreach ($dirs as $name => $dir) {
+                    $stat = $stats[$type][$name] ?? null;
+
+                    if ($type === 'other' && $name === 'lock' && $stat['files'] === 0) {
+                        continue;
+                    }
+
+                    $rows[] = [
+                        'type'     => $type,
+                        'name'     => $name,
+                        'location' => $dir['info'],
+                        'files'    => $stat['files'] ?? '-',
+                        'size'     => $stat['niceSize'] ?? '-'
+                    ];
+                }
+            }
+
+            $cli->table($rows);
+            return;
+        }
+
+        if (isset(static::props()[$type]) === false) {
+            throw new Exception('The type must be cache, media or other');
+        }
+
+        empty($dir) === true ? static::clearType($type) : static::clearDir($type, $dir);
+
+        $cli->success('Cleared');
+    }
+
+    /**
      * Options of the view button
      *
      * @return array

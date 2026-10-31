@@ -119,5 +119,21 @@ Kirby::plugin('owebstudio/clear-cache', [
                 }
             ]
         ]
+    ],
+    'commands' => [
+        'clear-cache' => [
+            'description' => 'Lists or clears caches, media files, old lock files and failed login attempts',
+            'args' => [
+                'type' => [
+                    'description' => 'cache, media or other (lists everything when empty)'
+                ],
+                'name' => [
+                    'description' => 'A single entry, e.g. pages (clears all entries of the type when empty)'
+                ]
+            ],
+            'command' => function ($cli): void {
+                ClearCache::command($cli);
+            }
+        ]
     ]
 ]);
