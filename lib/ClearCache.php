@@ -5,7 +5,6 @@ namespace Oweb;
 use Kirby\Exception\Exception;
 use Kirby\Filesystem\Dir;
 use Kirby\Filesystem\F;
-use Kirby\Panel\Panel;
 
 class ClearCache
 {
@@ -27,11 +26,11 @@ class ClearCache
      */
     public static function canClear(): bool
     {
-        $user = kirby()->user();
-
-        if (Panel::hasAccess($user, 'clear-cache') === false) {
+        if (kirby()->panel()->access()->area('clear-cache') === false) {
             return false;
         }
+
+        $user = kirby()->user();
 
         if ($user->isAdmin() === true) {
             return true;
