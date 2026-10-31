@@ -8,6 +8,10 @@ use Kirby\Exception\Exception;
 use Kirby\Filesystem\Dir;
 use Kirby\Filesystem\F;
 use Kirby\Toolkit\A;
+use FilesystemIterator;
+use Generator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use ReflectionClass;
 use Throwable;
 
@@ -283,16 +287,13 @@ class ClearCache
     {
         $dirs = [];
 
-        // lock
-        $locksPath = kirby()->root('content');
-        if (static::lockFiles($locksPath)) {
-            $dirs['lock'] = [
-                'name' => 'lock',
-                'path' => $locksPath,
-                'text' => 'Content lock files',
-                'info' => static::relativePath('content', '*.lock')
-            ];
-        }
+        // lock files of Kirby 3 and 4, counted by the stats
+        $dirs['lock'] = [
+            'name' => 'lock',
+            'path' => null,
+            'text' => 'Lock files from Kirby 3 and 4',
+            'info' => static::relative(kirby()->root('content')) . ', ' . static::relative(kirby()->root('accounts'))
+        ];
 
         // logins
         $loginsFile = kirby()->root('accounts') . '/.logins';
@@ -365,7 +366,7 @@ class ClearCache
                         F::unlink($dir['path']);
                         break;
                     case 'lock':
-                        static::clearLock($dir['path']);
+                        static::clearLock();
                         break;
                 }
                 break;
@@ -457,37 +458,115 @@ class ClearCache
     }
 
     /**
-     * @param string $path
+     * Removes the lock files of Kirby 3 and 4. Kirby 5 and newer
+     * still read them and then ignore the lock of the unsaved changes.
+     *
      * @return void
      */
-    public static function clearLock(string $path): void
+    public static function clearLock(): void
     {
-        $files = static::lockFiles($path);
+        foreach (static::lockFiles() as $file) {
+            F::unlink($file);
+        }
+    }
 
-        foreach ($files as $file) {
-            if (is_file($file) === true) {
-                F::unlink($file);
+    /**
+     * Lock files of Kirby 3 and 4 in the content and accounts folders
+     *
+     * @return Generator
+     */
+    public static function lockFiles(): Generator
+    {
+        foreach (['content', 'accounts'] as $root) {
+            foreach (static::files(kirby()->root($root)) as $file) {
+                if ($file->getFilename() === '.lock') {
+                    yield $file->getPathname();
+                }
             }
         }
     }
 
     /**
+     * All files in a folder, without following links
+     *
      * @param string $path
-     * @param array $files
+     * @return Generator
+     */
+    public static function files(string $path): Generator
+    {
+        if (is_dir($path) === false || is_link($path) === true) {
+            return;
+        }
+
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::LEAVES_ONLY,
+            RecursiveIteratorIterator::CATCH_GET_CHILD
+        );
+
+        foreach ($files as $file) {
+            if ($file->isLink() === true || $file->isDir() === false) {
+                yield $file;
+            }
+        }
+    }
+
+    /**
+     * Number of files and size of each entry
+     *
      * @return array
      */
-    public static function lockFiles(string $path, array $files = []): array
+    public static function stats(): array
     {
-        foreach (Dir::read($path, null, true) as $dir) {
-            if (is_dir($dir) === true) {
-                $files = static::lockFiles($dir, $files);
-            } else {
-                if (basename($dir) === '.lock' && is_file($dir) === true) {
-                    $files[] = $dir;
-                }
+        $stats = [];
+
+        foreach (static::props() as $type => $dirs) {
+            foreach ($dirs as $name => $dir) {
+                $paths = match (true) {
+                    $type === 'other' && $name === 'lock' => iterator_to_array(static::lockFiles(), false),
+                    $type === 'cache'                     => $dir['path'] === [] ? null : $dir['path'],
+                    default                               => [$dir['path']]
+                };
+
+                $stats[$type][$name] = $paths === null ? null : static::size($paths);
             }
         }
 
-        return $files;
+        return $stats;
+    }
+
+    /**
+     * Number of files and size of files and folders
+     *
+     * @param array $paths
+     * @return array
+     */
+    public static function size(array $paths): array
+    {
+        $files = 0;
+        $size  = 0;
+
+        foreach ($paths as $path) {
+            if (file_exists($path) === false && is_link($path) === false) {
+                continue;
+            }
+
+            if (is_dir($path) === false || is_link($path) === true) {
+                $files++;
+                $size += is_link($path) === true ? 0 : (int)@filesize($path);
+                continue;
+            }
+
+            foreach (static::files($path) as $file) {
+                $files++;
+                $size += $file->isLink() === true ? 0 : $file->getSize();
+            }
+        }
+
+        return [
+            'files'    => $files,
+            'size'     => $size,
+            'niceSize' => F::niceSize($size)
+        ];
     }
 }

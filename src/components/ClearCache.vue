@@ -1,77 +1,37 @@
 <template>
-  <k-panel-inside>
-    <div class="k-clearcache-view">
-      <k-header>Clear cache <small>[temporary files and directories]</small></k-header>
-      <k-info-field text="The files and folders listed here are temporary. It is recreated when deleted. There is no harm in deleting it."/>
+  <k-panel-inside class="k-clearcache-view">
+    <k-header>Clear cache</k-header>
 
-      <k-field label="Cache" help="All cached parts of your website are stored here.">
-        <template v-if="Object.keys(dirs.cache).length" #options>
-          <k-button-group class="k-field-options">
-            <k-button icon="check" @click="clear('cache')">
-              Clear all
-            </k-button>
-          </k-button-group>
-        </template>
-        <template v-if="Object.keys(dirs.cache).length">
-          <k-items
-              :items="dirs.cache"
-              :link="false"
-              layout="list"
-          >
-            <template #options="{ item: dir }">
-              <k-button icon="trash" @click="clear('cache', dir.name)"/>
-            </template>
-          </k-items>
-        </template>
-        <k-empty v-else icon="check">
-          No temporary files/directories yet
-        </k-empty>
-      </k-field>
+    <k-box
+      class="k-clearcache-intro"
+      icon="info"
+      theme="info"
+      text="Everything listed here is temporary. Kirby creates it again when it is needed."
+    />
 
-      <k-field label="Media"
-               help="The panel folder is created immediately when you enter the panel or refresh the page after deleting it. Usually the version is cleared when the Kirby version is updated.">
-        <template v-if="Object.keys(dirs.media).length" #options>
-          <k-button-group class="k-field-options">
-            <k-button icon="check" @click="clear('media')">Clear all</k-button>
-          </k-button-group>
+    <k-section
+      v-for="group in groups"
+      :key="group.type"
+      :buttons="group.buttons"
+      :label="group.label"
+    >
+      <k-table
+        :columns="columns"
+        :index="false"
+        :rows="group.rows"
+        empty="Nothing to clear"
+      >
+        <template #options="{ row }">
+          <k-button
+            icon="trash"
+            size="sm"
+            title="Clear"
+            @click="clear(group.type, row.name)"
+          />
         </template>
-        <k-items
-            v-if="Object.keys(dirs.media).length"
-            :items="dirs.media"
-            :link="false"
-            layout="list"
-        >
-          <template #options="{ item: dir }">
-            <k-button icon="trash" @click="clear('media', dir.name)"/>
-          </template>
-        </k-items>
-        <k-empty v-else icon="check">
-          No temporary files/directories yet
-        </k-empty>
-      </k-field>
-
-      <k-field label="Other" help="Other temporary files/directories of your website.">
-        <template v-if="Object.keys(dirs.other).length" #options>
-          <k-button-group class="k-field-options">
-            <k-button icon="check" @click="clear('other')">Clear all</k-button>
-          </k-button-group>
-        </template>
-        <template v-if="Object.keys(dirs.other).length">
-          <k-items
-              :items="dirs.other"
-              :link="false"
-              layout="list"
-          >
-            <template #options="{ item: dir }">
-              <k-button icon="trash" @click="clear('other', dir.name)"/>
-            </template>
-          </k-items>
-        </template>
-        <k-empty v-else icon="check">
-          No temporary files/directories yet
-        </k-empty>
-      </k-field>
-    </div>
+      </k-table>
+      <k-text :text="group.help" class="k-help k-clearcache-help" />
+    </k-section>
   </k-panel-inside>
 </template>
 
@@ -84,40 +44,102 @@ export default {
   },
   data() {
     return {
-      dirs: {
-        cache: Object.values(this.cache),
-        media: Object.values(this.media),
-        other: Object.values(this.other)
-      }
+      stats: null,
+      request: 0
     };
+  },
+  computed: {
+    columns() {
+      return {
+        text: { label: "Name", mobile: true },
+        info: { label: "Location" },
+        files: { label: "Files", align: "right", width: "1/8" },
+        size: { label: "Size", align: "right", width: "1/8", mobile: true }
+      };
+    },
+    groups() {
+      return [
+        {
+          type: "cache",
+          label: "Cache",
+          help: "The caches of Kirby and your plugins. Each cache is cleared for all domains of your site and for the command line."
+        },
+        {
+          type: "media",
+          label: "Media",
+          help: "Copies of your files, thumbnails and the assets of the Panel and your plugins. Kirby creates them again when they are requested. Clearing media files also clears the pages cache, so that cached pages don't link to missing thumbnails."
+        },
+        {
+          type: "other",
+          label: "Other",
+          help: "Kirby 5 and newer keep content locks with the unsaved changes. Old lock files from Kirby 3 and 4 make Kirby ignore these locks. Clearing the failed login attempts unblocks users and IP addresses."
+        }
+      ].map((group) => {
+        const rows = this.rows(group.type);
+
+        return {
+          ...group,
+          rows,
+          buttons: rows.length ? [{ icon: "trash", text: "Clear all", click: () => this.clear(group.type) }] : null
+        };
+      });
+    }
+  },
+  watch: {
+    cache() {
+      this.load();
+    }
+  },
+  created() {
+    this.load();
   },
   methods: {
     async clear(type, dir = null) {
-      try {
-        const response = await this.$panel.api.post("clear-cache", {
-          type: type,
-          dir: dir,
-        });
+      await this.$panel.api.post("clear-cache", {
+        type: type,
+        dir: dir,
+      });
 
-        if (response) {
-          if (dir) {
-            this.dirs[type] = this.dirs[type].filter(item => item.name !== dir);
-          } else {
-            this.dirs[type] = [];
-          }
+      this.$panel.notification.success("Cleared");
+      await this.$panel.view.reload();
+    },
+    async load() {
+      const request = ++this.request;
 
-          this.$panel.notification.success(":)");
-        }
-      } catch (error) {
-        throw error;
+      this.stats = null;
+
+      const stats = await this.$panel.api.get("clear-cache/stats");
+
+      if (request === this.request) {
+        this.stats = stats;
       }
+    },
+    rows(type) {
+      const rows = Object.values(this[type]).map((dir) => {
+        const stats = this.stats?.[type]?.[dir.name];
+
+        return {
+          id: dir.name,
+          name: dir.name,
+          text: dir.text,
+          info: dir.info,
+          files: this.stats ? String(stats?.files ?? "–") : "…",
+          size: this.stats ? (stats?.niceSize ?? "–") : "…"
+        };
+      });
+
+      // old lock files only show up when there are some
+      return rows.filter((row) => type !== "other" || row.name !== "lock" || (this.stats && row.files !== "0"));
     }
   }
 };
 </script>
 
 <style>
-.k-clearcache-view .k-field {
-  margin-bottom: 2rem;
+.k-clearcache-intro {
+  margin-bottom: var(--spacing-12);
+}
+.k-clearcache-help {
+  margin-top: var(--spacing-3);
 }
 </style>

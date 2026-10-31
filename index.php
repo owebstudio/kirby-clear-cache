@@ -68,6 +68,17 @@ Kirby::plugin('owebstudio/clear-cache', [
 
                     return true;
                 }
+            ],
+            [
+                'pattern' => 'clear-cache/stats',
+                'method' => 'GET',
+                'action' => function () {
+                    if (ClearCache::canClear() === false) {
+                        throw new PermissionException();
+                    }
+
+                    return ClearCache::stats();
+                }
             ]
         ]
     ]
