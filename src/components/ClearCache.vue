@@ -17,7 +17,6 @@
               :items="dirs.cache"
               :link="false"
               layout="list"
-              sortable="false"
           >
             <template #options="{ item: dir }">
               <k-button icon="trash" @click="clear('cache', dir.name)"/>
@@ -41,7 +40,6 @@
             :items="dirs.media"
             :link="false"
             layout="list"
-            sortable="false"
         >
           <template #options="{ item: dir }">
             <k-button icon="trash" @click="clear('media', dir.name)"/>
@@ -63,7 +61,6 @@
               :items="dirs.other"
               :link="false"
               layout="list"
-              sortable="false"
           >
             <template #options="{ item: dir }">
               <k-button icon="trash" @click="clear('other', dir.name)"/>
@@ -81,9 +78,9 @@
 <script>
 export default {
   props: {
-    cache: Array,
-    media: Array,
-    other: Array,
+    cache: [Array, Object],
+    media: [Array, Object],
+    other: [Array, Object],
   },
   data() {
     return {
@@ -97,7 +94,7 @@ export default {
   methods: {
     async clear(type, dir = null) {
       try {
-        const response = await this.$api.post("clear-cache", {
+        const response = await this.$panel.api.post("clear-cache", {
           type: type,
           dir: dir,
         });
@@ -107,10 +104,6 @@ export default {
             this.dirs[type] = this.dirs[type].filter(item => item.name !== dir);
           } else {
             this.dirs[type] = [];
-          }
-
-          if (type === 'other' && dir === 'lock') {
-            this.$store?.dispatch("content/clear");
           }
 
           this.$panel.notification.success(":)");
