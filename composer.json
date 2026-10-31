@@ -1,6 +1,6 @@
 {
   "name": "owebstudio/kirby-clear-cache",
-  "description": "This plugin allows you to clean temporary files and folders such as cache, media, .lock and .logins on your website.",
+  "description": "Clears the caches, media files and other temporary files of your Kirby site from the Panel or the command line.",
   "type": "kirby-plugin",
   "license": "MIT",
   "keywords": [
@@ -12,15 +12,15 @@
     "kirby-cache",
     "cache-clear"
   ],
-  "homepage": "https://owebstudio.com",
+  "homepage": "https://github.com/owebstudio/kirby-clear-cache",
   "support": {
-    "email": "support@owebstudio.com"
+    "issues": "https://github.com/owebstudio/kirby-clear-cache/issues",
+    "source": "https://github.com/owebstudio/kirby-clear-cache"
   },
   "authors": [
     {
       "name": "oweb studio",
-      "email": "contact@owebstudio.com",
-      "homepage": "https://owebstudio.com"
+      "homepage": "https://github.com/owebstudio"
     }
   ],
   "require": {
