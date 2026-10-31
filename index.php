@@ -38,6 +38,24 @@ Kirby::plugin('owebstudio/clear-cache', [
                         }
                     ]
                 ],
+                'buttons' => [
+                    'clear-cache' => function () {
+                        if (ClearCache::canClear() === false) {
+                            return null;
+                        }
+
+                        return [
+                            'icon' => 'trash',
+                            'text' => 'Clear cache',
+                            'options' => 'clear-cache'
+                        ];
+                    }
+                ],
+                'dropdowns' => [
+                    'clear-cache' => function () {
+                        return ClearCache::dropdown();
+                    }
+                ],
                 'dialogs' => [
                     'clear-cache.type' => [
                         'pattern' => 'clear-cache/(:any)',

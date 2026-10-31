@@ -312,6 +312,49 @@ class ClearCache
     }
 
     /**
+     * Options of the view button
+     *
+     * @return array
+     * @throws PermissionException
+     */
+    public static function dropdown(): array
+    {
+        if (static::canClear() === false) {
+            throw new PermissionException();
+        }
+
+        $options = [];
+
+        if (isset(static::props()['cache']['pages']) === true) {
+            $options[] = [
+                'text' => 'Clear pages cache',
+                'icon' => 'page',
+                'dialog' => 'clear-cache/cache/pages'
+            ];
+        }
+
+        return [
+            ...$options,
+            [
+                'text' => 'Clear all caches',
+                'icon' => 'server',
+                'dialog' => 'clear-cache/cache'
+            ],
+            [
+                'text' => 'Clear all media files',
+                'icon' => 'image',
+                'dialog' => 'clear-cache/media'
+            ],
+            '-',
+            [
+                'text' => 'Show all',
+                'icon' => 'list-bullet',
+                'link' => 'clear-cache'
+            ]
+        ];
+    }
+
+    /**
      * Confirmation before clearing a whole type or a single entry
      *
      * @param string $type
