@@ -37,6 +37,26 @@ Kirby::plugin('owebstudio/clear-cache', [
                             ];
                         }
                     ]
+                ],
+                'dialogs' => [
+                    'clear-cache.type' => [
+                        'pattern' => 'clear-cache/(:any)',
+                        'load' => function (string $type) {
+                            return ClearCache::dialog($type);
+                        },
+                        'submit' => function (string $type) {
+                            return ClearCache::submit($type);
+                        }
+                    ],
+                    'clear-cache.dir' => [
+                        'pattern' => 'clear-cache/(:any)/(:any)',
+                        'load' => function (string $type, string $dir) {
+                            return ClearCache::dialog($type, $dir);
+                        },
+                        'submit' => function (string $type, string $dir) {
+                            return ClearCache::submit($type, $dir);
+                        }
+                    ]
                 ]
             ];
         }

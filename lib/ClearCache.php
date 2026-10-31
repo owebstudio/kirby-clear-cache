@@ -5,6 +5,8 @@ namespace Oweb;
 use Kirby\Cache\FileCache;
 use Kirby\Cache\NullCache;
 use Kirby\Exception\Exception;
+use Kirby\Exception\NotFoundException;
+use Kirby\Exception\PermissionException;
 use Kirby\Filesystem\Dir;
 use Kirby\Filesystem\F;
 use Kirby\Toolkit\A;
@@ -307,6 +309,60 @@ class ClearCache
         }
 
         return $dirs;
+    }
+
+    /**
+     * Confirmation before clearing a whole type or a single entry
+     *
+     * @param string $type
+     * @param string|null $dir
+     * @return array
+     * @throws Exception
+     */
+    public static function dialog(string $type, string|null $dir = null): array
+    {
+        if (static::canClear() === false) {
+            throw new PermissionException();
+        }
+
+        $item = $dir !== null ? (static::props()[$type][$dir] ?? null) : null;
+
+        if (isset(static::props()[$type]) === false || ($dir !== null && $item === null)) {
+            throw new NotFoundException('Invalid directory!');
+        }
+
+        $text = match (true) {
+            $dir === 'logins' => 'Do you really want to reset the failed login attempts? Blocked users and IP addresses can log in again.',
+            $dir !== null     => 'Do you really want to clear "' . $item['text'] . '"?',
+            $type === 'cache' => 'Do you really want to clear all caches?',
+            $type === 'media' => 'Do you really want to clear all media files? The pages cache is cleared as well.',
+            default           => 'Do you really want to remove the old lock files and reset the failed login attempts?'
+        };
+
+        return [
+            'component' => 'k-remove-dialog',
+            'props' => [
+                'text' => $text,
+                'submitButton' => $dir === null ? 'Clear all' : 'Clear'
+            ]
+        ];
+    }
+
+    /**
+     * @param string $type
+     * @param string|null $dir
+     * @return array
+     * @throws Exception
+     */
+    public static function submit(string $type, string|null $dir = null): array
+    {
+        static::dialog($type, $dir);
+
+        $dir === null ? static::clearType($type) : static::clearDir($type, $dir);
+
+        return [
+            'message' => 'Cleared'
+        ];
     }
 
     /**

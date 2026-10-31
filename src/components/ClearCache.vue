@@ -80,7 +80,7 @@ export default {
         return {
           ...group,
           rows,
-          buttons: rows.length ? [{ icon: "trash", text: "Clear all", click: () => this.clear(group.type) }] : null
+          buttons: rows.length ? [{ icon: "trash", text: "Clear all", dialog: "clear-cache/" + group.type }] : null
         };
       });
     }
@@ -94,7 +94,12 @@ export default {
     this.load();
   },
   methods: {
-    async clear(type, dir = null) {
+    async clear(type, dir) {
+      // ask first, blocked users can log in again
+      if (dir === "logins") {
+        return this.$panel.dialog.open("clear-cache/" + type + "/" + dir);
+      }
+
       await this.$panel.api.post("clear-cache", {
         type: type,
         dir: dir,
