@@ -33,7 +33,7 @@ Kirby::plugin('owebstudio/clear-cache', [
                             return [
                                 'component' => 'clearcache',
                                 'title' => 'Clear cache',
-                                'props' => ClearCache::props(),
+                                'props' => ClearCache::view(),
                             ];
                         }
                     ]
