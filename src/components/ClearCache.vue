@@ -1,130 +1,137 @@
 <template>
-  <k-panel-inside>
-    <div class="k-clearcache-view">
-      <k-header>Clear cache <small>[temporary files and directories]</small></k-header>
-      <k-info-field text="The files and folders listed here are temporary. It is recreated when deleted. There is no harm in deleting it."/>
+  <k-panel-inside class="k-clearcache-view">
+    <k-header>{{ $t("owebstudio.clear-cache.title") }}</k-header>
 
-      <k-field label="Cache" help="All cached parts of your website are stored here.">
-        <template v-if="Object.keys(dirs.cache).length" #options>
-          <k-button-group class="k-field-options">
-            <k-button icon="check" @click="clear('cache')">
-              Clear all
-            </k-button>
-          </k-button-group>
-        </template>
-        <template v-if="Object.keys(dirs.cache).length">
-          <k-items
-              :items="dirs.cache"
-              :link="false"
-              layout="list"
-              sortable="false"
-          >
-            <template #options="{ item: dir }">
-              <k-button icon="trash" @click="clear('cache', dir.name)"/>
-            </template>
-          </k-items>
-        </template>
-        <k-empty v-else icon="check">
-          No temporary files/directories yet
-        </k-empty>
-      </k-field>
+    <k-box
+      :text="$t('owebstudio.clear-cache.intro')"
+      class="k-clearcache-intro"
+      icon="info"
+      theme="info"
+    />
 
-      <k-field label="Media"
-               help="The panel folder is created immediately when you enter the panel or refresh the page after deleting it. Usually the version is cleared when the Kirby version is updated.">
-        <template v-if="Object.keys(dirs.media).length" #options>
-          <k-button-group class="k-field-options">
-            <k-button icon="check" @click="clear('media')">Clear all</k-button>
-          </k-button-group>
+    <k-section
+      v-for="group in groups"
+      :key="group.type"
+      :buttons="group.buttons"
+      :label="$t('owebstudio.clear-cache.' + group.type)"
+    >
+      <k-table
+        :columns="columns"
+        :empty="$t('owebstudio.clear-cache.empty')"
+        :index="false"
+        :rows="group.rows"
+      >
+        <template #options="{ row }">
+          <k-button
+            :title="$t('owebstudio.clear-cache.clear')"
+            icon="trash"
+            size="sm"
+            @click="clear(group.type, row.name)"
+          />
         </template>
-        <k-items
-            v-if="Object.keys(dirs.media).length"
-            :items="dirs.media"
-            :link="false"
-            layout="list"
-            sortable="false"
-        >
-          <template #options="{ item: dir }">
-            <k-button icon="trash" @click="clear('media', dir.name)"/>
-          </template>
-        </k-items>
-        <k-empty v-else icon="check">
-          No temporary files/directories yet
-        </k-empty>
-      </k-field>
-
-      <k-field label="Other" help="Other temporary files/directories of your website.">
-        <template v-if="Object.keys(dirs.other).length" #options>
-          <k-button-group class="k-field-options">
-            <k-button icon="check" @click="clear('other')">Clear all</k-button>
-          </k-button-group>
-        </template>
-        <template v-if="Object.keys(dirs.other).length">
-          <k-items
-              :items="dirs.other"
-              :link="false"
-              layout="list"
-              sortable="false"
-          >
-            <template #options="{ item: dir }">
-              <k-button icon="trash" @click="clear('other', dir.name)"/>
-            </template>
-          </k-items>
-        </template>
-        <k-empty v-else icon="check">
-          No temporary files/directories yet
-        </k-empty>
-      </k-field>
-    </div>
+      </k-table>
+      <k-text
+        :text="$t('owebstudio.clear-cache.' + group.type + '.help')"
+        class="k-help k-clearcache-help"
+      />
+    </k-section>
   </k-panel-inside>
 </template>
 
 <script>
 export default {
   props: {
-    cache: Array,
-    media: Array,
-    other: Array,
+    cache: [Array, Object],
+    media: [Array, Object],
+    other: [Array, Object],
   },
   data() {
     return {
-      dirs: {
-        cache: Object.values(this.cache),
-        media: Object.values(this.media),
-        other: Object.values(this.other)
-      }
+      stats: null,
+      request: 0
     };
   },
+  computed: {
+    columns() {
+      return {
+        text: { label: this.$t("owebstudio.clear-cache.name"), mobile: true },
+        info: { label: this.$t("owebstudio.clear-cache.location") },
+        files: { label: this.$t("owebstudio.clear-cache.files"), align: "right", width: "1/8" },
+        size: { label: this.$t("owebstudio.clear-cache.size"), align: "right", width: "1/8", mobile: true }
+      };
+    },
+    groups() {
+      return ["cache", "media", "other"].map((type) => {
+        const rows = this.rows(type);
+
+        return {
+          type,
+          rows,
+          buttons: rows.length ? [{ icon: "trash", text: this.$t("owebstudio.clear-cache.clear.all"), dialog: "clear-cache/" + type }] : null
+        };
+      });
+    }
+  },
+  watch: {
+    cache() {
+      this.load();
+    }
+  },
+  created() {
+    this.load();
+  },
   methods: {
-    async clear(type, dir = null) {
-      try {
-        const response = await this.$api.post("clear-cache", {
-          type: type,
-          dir: dir,
-        });
-
-        if (response) {
-          if (dir) {
-            this.dirs[type] = this.dirs[type].filter(item => item.name !== dir);
-          } else {
-            this.dirs[type] = [];
-          }
-
-          if (type === 'other' && dir === 'lock') {
-            this.$store?.dispatch("content/clear");
-          }
-
-          this.$panel.notification.success(":)");
-        }
-      } catch (error) {
-        throw error;
+    async clear(type, dir) {
+      // ask first, blocked users can log in again
+      if (dir === "logins") {
+        return this.$panel.dialog.open("clear-cache/" + type + "/" + dir);
       }
+
+      await this.$panel.api.post("clear-cache", {
+        type: type,
+        dir: dir,
+      });
+
+      this.$panel.notification.success(this.$t("owebstudio.clear-cache.cleared"));
+      await this.$panel.view.reload();
+    },
+    async load() {
+      const request = ++this.request;
+
+      this.stats = null;
+
+      const stats = await this.$panel.api.get("clear-cache/stats");
+
+      if (request === this.request) {
+        this.stats = stats;
+      }
+    },
+    rows(type) {
+      const rows = Object.values(this[type]).map((dir) => {
+        const stats = this.stats?.[type]?.[dir.name];
+
+        return {
+          id: dir.name,
+          name: dir.name,
+          text: dir.text,
+          info: dir.info,
+          files: this.stats ? String(stats?.files ?? "–") : "…",
+          size: this.stats ? (stats?.niceSize ?? "–") : "…"
+        };
+      });
+
+      // old lock files only show up when there are some
+      return rows.filter((row) => type !== "other" || row.name !== "lock" || (this.stats && row.files !== "0"));
     }
   }
 };
 </script>
 
 <style>
-.k-clearcache-view .k-field {
-  margin-bottom: 2rem;
+.k-clearcache-intro {
+  margin-bottom: var(--spacing-12);
+}
+.k-clearcache-help {
+  margin-top: var(--spacing-3);
 }
 </style>

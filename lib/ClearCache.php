@@ -2,10 +2,20 @@
 
 namespace Oweb;
 
+use Kirby\Cache\FileCache;
+use Kirby\Cache\NullCache;
 use Kirby\Exception\Exception;
+use Kirby\Exception\NotFoundException;
+use Kirby\Exception\PermissionException;
 use Kirby\Filesystem\Dir;
 use Kirby\Filesystem\F;
-use Kirby\Panel\Panel;
+use Kirby\Toolkit\A;
+use FilesystemIterator;
+use Generator;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use ReflectionClass;
+use Throwable;
 
 class ClearCache
 {
@@ -20,6 +30,20 @@ class ClearCache
     }
 
     /**
+     * The path from the index folder, or the full path for folders outside of it
+     *
+     * @param string $path
+     * @return string
+     */
+    public static function relative(string $path): string
+    {
+        $index = static::realpath(kirby()->root('index'));
+        $path  = static::realpath($path) ?? str_replace('\\', '/', $path);
+
+        return str_starts_with($path, $index . '/') === true ? substr($path, strlen($index)) : $path;
+    }
+
+    /**
      * Admins can always clear, unless the area is disabled for their role.
      * Other roles need the `owebstudio.clear-cache.clear` permission.
      *
@@ -27,11 +51,11 @@ class ClearCache
      */
     public static function canClear(): bool
     {
-        $user = kirby()->user();
-
-        if (Panel::hasAccess($user, 'clear-cache') === false) {
+        if (kirby()->panel()->access()->area('clear-cache') === false) {
             return false;
         }
+
+        $user = kirby()->user();
 
         if ($user->isAdmin() === true) {
             return true;
@@ -57,20 +81,52 @@ class ClearCache
     }
 
     /**
+     * Props for the Panel view, without the paths on the server
+     *
+     * @return array
+     */
+    public static function view(): array
+    {
+        return array_map(
+            fn (array $dirs) => array_values(array_map(fn (array $dir) => A::without($dir, 'path'), $dirs)),
+            static::props()
+        );
+    }
+
+    /**
+     * The caches of Kirby, the config and the plugins
+     *
      * @return array
      */
     public static function cacheDirs()
     {
         $dirs = [];
 
-        foreach (Dir::dirs(kirby()->root('cache'), null, true) as $dir) {
-            $basename = basename($dir);
+        foreach (static::cacheNames() as $name) {
+            try {
+                $cache = kirby()->cache($name);
+            } catch (Throwable) {
+                continue;
+            }
 
-            $dirs[$basename] = [
-                'name' => $basename,
-                'path' => $dir,
-                'text' => $basename,
-                'info' => static::relativePath('cache', $basename)
+            if (
+                $cache instanceof NullCache ||
+                ($cache instanceof FileCache && static::containsRoot($cache->root()) === true)
+            ) {
+                continue;
+            }
+
+            $paths = $cache instanceof FileCache ? static::cachePaths($cache) : [];
+
+            $dirs[$name] = [
+                'name' => $name,
+                'path' => $paths,
+                'text' => t('owebstudio.clear-cache.cache.' . $name, $name),
+                'info' => match (true) {
+                    $cache instanceof FileCache === false => preg_replace('/Cache$/', '', (new ReflectionClass($cache))->getShortName()),
+                    count($paths) > 1                    => static::relativePath('cache', '*/' . static::cacheKey($cache)),
+                    default                              => static::relative($cache->root())
+                }
             ];
         }
 
@@ -78,20 +134,143 @@ class ClearCache
     }
 
     /**
+     * Names of all active caches, without the index
+     * of unsaved changes that Kirby rebuilds on its own
+     *
+     * @return array
+     */
+    public static function cacheNames(): array
+    {
+        $kirby = kirby();
+        $names = array_keys($kirby->core()->caches());
+
+        foreach ($kirby->options() as $key => $value) {
+            if ($key === 'cache' && is_array($value) === true) {
+                $names = [...$names, ...array_keys($value)];
+            } elseif (str_starts_with($key, 'cache.') === true) {
+                $names[] = substr($key, 6);
+            }
+        }
+
+        foreach ($kirby->plugins() as $plugin) {
+            $prefix  = $plugin->prefix();
+            $options = $kirby->option($prefix . '.cache');
+
+            if (
+                $options === true ||
+                (is_array($options) === true && array_intersect(array_keys($options), ['active', 'type', 'root', 'prefix', 'extension']) !== [])
+            ) {
+                $names[] = $prefix;
+            } elseif (is_array($options) === true) {
+                foreach (array_keys($options) as $key) {
+                    $names[] = $prefix . '.' . $key;
+                }
+            }
+        }
+
+        return array_values(array_diff(array_unique($names), ['changes']));
+    }
+
+    /**
+     * The folders of a file cache, for the current domain
+     * as well as for other domains and the command line
+     *
+     * @param FileCache $cache
+     * @return array
+     */
+    public static function cachePaths(FileCache $cache): array
+    {
+        $key = static::cacheKey($cache);
+
+        if ($key === null) {
+            return [$cache->root()];
+        }
+
+        $paths = [];
+
+        foreach (Dir::dirs(kirby()->root('cache'), null, true) as $dir) {
+            if (is_dir($dir . '/' . $key) === true) {
+                $paths[] = $dir . '/' . $key;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * Path of the cache inside the folder of the current domain,
+     * or null if the cache has its own root or prefix
+     *
+     * @param FileCache $cache
+     * @return string|null
+     */
+    public static function cacheKey(FileCache $cache): string|null
+    {
+        $domain = static::realpath(kirby()->root('cache')) . '/' . str_replace(['/', ':'], '_', kirby()->system()->indexUrl());
+        $root   = static::realpath($cache->root());
+
+        if ($root === null || str_starts_with($root, $domain . '/') === false) {
+            return null;
+        }
+
+        return substr($root, strlen($domain) + 1);
+    }
+
+    /**
+     * Empties a cache for all domains
+     *
+     * @param string $name
+     * @return void
+     */
+    public static function clearCache(string $name): void
+    {
+        $cache = kirby()->cache($name);
+
+        if ($cache instanceof FileCache && static::containsRoot($cache->root()) === true) {
+            throw new Exception('Invalid directory!');
+        }
+
+        $cache->flush();
+
+        if ($cache instanceof FileCache) {
+            foreach (static::cachePaths($cache) as $path) {
+                if (static::isRemovable($path, kirby()->root('cache')) === true) {
+                    static::remove($path);
+                }
+            }
+        }
+    }
+
+    /**
      * @return array
      */
     public static function mediaDirs()
     {
+        return static::folders('media');
+    }
+
+    /**
+     * Folders in the given root that can be removed safely
+     *
+     * @param string $root
+     * @return array
+     */
+    public static function folders(string $root): array
+    {
         $dirs = [];
 
-        foreach (Dir::dirs(kirby()->root('media'), null, true) as $dir) {
+        foreach (Dir::dirs(kirby()->root($root), null, true) as $dir) {
+            if (static::isRemovable($dir, kirby()->root($root)) === false) {
+                continue;
+            }
+
             $basename = basename($dir);
 
             $dirs[$basename] = [
                 'name' => $basename,
                 'path' => $dir,
-                'text' => $basename,
-                'info' => static::relativePath('media', $basename)
+                'text' => t('owebstudio.clear-cache.' . $root . '.' . $basename, $basename),
+                'info' => static::relativePath($root, $basename)
             ];
         }
 
@@ -105,16 +284,13 @@ class ClearCache
     {
         $dirs = [];
 
-        // lock
-        $locksPath = kirby()->root('content');
-        if (static::lockFiles($locksPath)) {
-            $dirs['lock'] = [
-                'name' => 'lock',
-                'path' => $locksPath,
-                'text' => 'Content lock files',
-                'info' => static::relativePath('content', '*.lock')
-            ];
-        }
+        // lock files of Kirby 3 and 4, counted by the stats
+        $dirs['lock'] = [
+            'name' => 'lock',
+            'path' => null,
+            'text' => t('owebstudio.clear-cache.lock'),
+            'info' => static::relative(kirby()->root('content')) . ', ' . static::relative(kirby()->root('accounts'))
+        ];
 
         // logins
         $loginsFile = kirby()->root('accounts') . '/.logins';
@@ -122,12 +298,156 @@ class ClearCache
             $dirs['logins'] = [
                 'name' => 'logins',
                 'path' => $loginsFile,
-                'text' => 'Users login data',
+                'text' => t('owebstudio.clear-cache.logins'),
                 'info' => static::relativePath('accounts', '.logins')
             ];
         }
 
         return $dirs;
+    }
+
+    /**
+     * The `clear-cache` command of the Kirby CLI
+     *
+     * @param \Kirby\CLI\CLI $cli
+     * @return void
+     * @throws Exception
+     */
+    public static function command($cli): void
+    {
+        $type = $cli->arg('type');
+        $dir  = $cli->arg('name');
+
+        if (empty($type) === true) {
+            $stats = static::stats();
+            $rows  = [];
+
+            foreach (static::props() as $type => $dirs) {
+                foreach ($dirs as $name => $dir) {
+                    $stat = $stats[$type][$name] ?? null;
+
+                    if ($type === 'other' && $name === 'lock' && $stat['files'] === 0) {
+                        continue;
+                    }
+
+                    $rows[] = [
+                        'type'     => $type,
+                        'name'     => $name,
+                        'location' => $dir['info'],
+                        'files'    => $stat['files'] ?? '-',
+                        'size'     => $stat['niceSize'] ?? '-'
+                    ];
+                }
+            }
+
+            $cli->table($rows);
+            return;
+        }
+
+        if (isset(static::props()[$type]) === false) {
+            throw new Exception('The type must be cache, media or other');
+        }
+
+        empty($dir) === true ? static::clearType($type) : static::clearDir($type, $dir);
+
+        $cli->success('Cleared');
+    }
+
+    /**
+     * Options of the view button
+     *
+     * @return array
+     * @throws PermissionException
+     */
+    public static function dropdown(): array
+    {
+        if (static::canClear() === false) {
+            throw new PermissionException();
+        }
+
+        $options = [];
+
+        if (isset(static::props()['cache']['pages']) === true) {
+            $options[] = [
+                'text' => t('owebstudio.clear-cache.dropdown.pages'),
+                'icon' => 'page',
+                'dialog' => 'clear-cache/cache/pages'
+            ];
+        }
+
+        return [
+            ...$options,
+            [
+                'text' => t('owebstudio.clear-cache.dropdown.cache'),
+                'icon' => 'server',
+                'dialog' => 'clear-cache/cache'
+            ],
+            [
+                'text' => t('owebstudio.clear-cache.dropdown.media'),
+                'icon' => 'image',
+                'dialog' => 'clear-cache/media'
+            ],
+            '-',
+            [
+                'text' => t('owebstudio.clear-cache.dropdown.view'),
+                'icon' => 'list-bullet',
+                'link' => 'clear-cache'
+            ]
+        ];
+    }
+
+    /**
+     * Confirmation before clearing a whole type or a single entry
+     *
+     * @param string $type
+     * @param string|null $dir
+     * @return array
+     * @throws Exception
+     */
+    public static function dialog(string $type, string|null $dir = null): array
+    {
+        if (static::canClear() === false) {
+            throw new PermissionException();
+        }
+
+        $item = $dir !== null ? (static::props()[$type][$dir] ?? null) : null;
+
+        if (isset(static::props()[$type]) === false || ($dir !== null && $item === null)) {
+            throw new NotFoundException('Invalid directory!');
+        }
+
+        $text = match (true) {
+            $dir === 'logins' => t('owebstudio.clear-cache.confirm.logins'),
+            $dir !== null     => tt('owebstudio.clear-cache.confirm', ['name' => $item['text']]),
+            $type === 'cache' => t('owebstudio.clear-cache.confirm.cache'),
+            $type === 'media' => t('owebstudio.clear-cache.confirm.media'),
+            default           => t('owebstudio.clear-cache.confirm.other')
+        };
+
+        return [
+            'component' => 'k-remove-dialog',
+            'props' => [
+                'text' => $text,
+                'submitButton' => t($dir === null ? 'owebstudio.clear-cache.clear.all' : 'owebstudio.clear-cache.clear')
+            ]
+        ];
+    }
+
+    /**
+     * @param string $type
+     * @param string|null $dir
+     * @return array
+     * @throws Exception
+     */
+    public static function submit(string $type, string|null $dir = null): array
+    {
+        static::dialog($type, $dir);
+
+        $dir === null ? static::clearType($type) : static::clearDir($type, $dir);
+
+        return [
+            'message' => t('owebstudio.clear-cache.cleared')
+        ];
     }
 
     /**
@@ -139,6 +459,13 @@ class ClearCache
     {
         foreach (static::props()[$type] ?? [] as $dir) {
             static::clearDir($type, $dir);
+        }
+
+        // folders of removed caches and caches with their own prefix
+        if ($type === 'cache') {
+            foreach (static::folders('cache') as $dir) {
+                static::remove($dir['path']);
+            }
         }
     }
 
@@ -160,16 +487,27 @@ class ClearCache
 
         switch ($type) {
             case 'cache':
+                static::clearCache($dir['name']);
+                break;
             case 'media':
-                Dir::remove($dir['path']);
+                if (static::isRemovable($dir['path'], kirby()->root($type)) === false) {
+                    throw new Exception('Invalid directory!');
+                }
+
+                static::remove($dir['path']);
+
+                // cached pages would link to thumbs whose jobs are gone
+                if (in_array($dir['name'], ['panel', 'plugins'], true) === false) {
+                    static::clearCache('pages');
+                }
                 break;
             case 'other':
                 switch ($dir['name']) {
                     case 'logins':
-                        F::remove($dir['path']);
+                        F::unlink($dir['path']);
                         break;
                     case 'lock':
-                        static::clearLock($dir['path']);
+                        static::clearLock();
                         break;
                 }
                 break;
@@ -177,37 +515,199 @@ class ClearCache
     }
 
     /**
+     * Checks that the path is inside the given root and doesn't contain
+     * another root of the site, e.g. when the media root is the index folder
+     *
+     * @param string $path
+     * @param string $root
+     * @return bool
+     */
+    public static function isRemovable(string $path, string $root): bool
+    {
+        $root = static::realpath($root);
+        $link = is_link($path);
+
+        // links are removed, never followed
+        $path = $link === true
+            ? static::realpath(dirname($path)) . '/' . basename($path)
+            : static::realpath($path);
+
+        if ($root === null || $path === null || str_starts_with($path, $root . '/') === false) {
+            return false;
+        }
+
+        return $link === true || static::containsRoot($path) === false;
+    }
+
+    /**
+     * Checks if the path is or contains a root of the site
+     * other than the cache and media folders
+     *
+     * @param string $path
+     * @return bool
+     */
+    public static function containsRoot(string $path): bool
+    {
+        $path = static::realpath($path) ?? $path;
+
+        foreach (kirby()->roots()->toArray() as $key => $root) {
+            if (in_array($key, ['cache', 'media'], true) === true) {
+                continue;
+            }
+
+            $root = static::realpath($root);
+
+            if ($root !== null && ($root === $path || str_starts_with($root, $path . '/') === true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Removes a file or folder. Links are removed, never followed.
+     *
      * @param string $path
      * @return void
      */
-    public static function clearLock(string $path): void
+    public static function remove(string $path): void
     {
-        $files = static::lockFiles($path);
+        if (is_link($path) === true) {
+            // links to folders can only be removed with rmdir() on Windows
+            is_dir($path) === true && DIRECTORY_SEPARATOR === '\\' ? rmdir($path) : unlink($path);
+            return;
+        }
 
-        foreach ($files as $file) {
-            if (is_file($file) === true) {
-                F::remove($file);
+        if (is_dir($path) === true) {
+            Dir::remove($path);
+            return;
+        }
+
+        F::unlink($path);
+    }
+
+    /**
+     * @param string $path
+     * @return string|null
+     */
+    protected static function realpath(string $path): string|null
+    {
+        $realpath = realpath($path);
+
+        return $realpath === false ? null : rtrim(str_replace('\\', '/', $realpath), '/');
+    }
+
+    /**
+     * Removes the lock files of Kirby 3 and 4. Kirby 5 and newer
+     * still read them and then ignore the lock of the unsaved changes.
+     *
+     * @return void
+     */
+    public static function clearLock(): void
+    {
+        foreach (static::lockFiles() as $file) {
+            F::unlink($file);
+        }
+    }
+
+    /**
+     * Lock files of Kirby 3 and 4 in the content and accounts folders
+     *
+     * @return Generator
+     */
+    public static function lockFiles(): Generator
+    {
+        foreach (['content', 'accounts'] as $root) {
+            foreach (static::files(kirby()->root($root)) as $file) {
+                if ($file->getFilename() === '.lock') {
+                    yield $file->getPathname();
+                }
             }
         }
     }
 
     /**
+     * All files in a folder, without following links
+     *
      * @param string $path
-     * @param array $files
+     * @return Generator
+     */
+    public static function files(string $path): Generator
+    {
+        if (is_dir($path) === false || is_link($path) === true) {
+            return;
+        }
+
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::LEAVES_ONLY,
+            RecursiveIteratorIterator::CATCH_GET_CHILD
+        );
+
+        foreach ($files as $file) {
+            if ($file->isLink() === true || $file->isDir() === false) {
+                yield $file;
+            }
+        }
+    }
+
+    /**
+     * Number of files and size of each entry
+     *
      * @return array
      */
-    public static function lockFiles(string $path, array $files = []): array
+    public static function stats(): array
     {
-        foreach (Dir::read($path, null, true) as $dir) {
-            if (is_dir($dir) === true) {
-                $files = static::lockFiles($dir, $files);
-            } else {
-                if (basename($dir) === '.lock' && is_file($dir) === true) {
-                    $files[] = $dir;
-                }
+        $stats = [];
+
+        foreach (static::props() as $type => $dirs) {
+            foreach ($dirs as $name => $dir) {
+                $paths = match (true) {
+                    $type === 'other' && $name === 'lock' => iterator_to_array(static::lockFiles(), false),
+                    $type === 'cache'                     => $dir['path'] === [] ? null : $dir['path'],
+                    default                               => [$dir['path']]
+                };
+
+                $stats[$type][$name] = $paths === null ? null : static::size($paths);
             }
         }
 
-        return $files;
+        return $stats;
+    }
+
+    /**
+     * Number of files and size of files and folders
+     *
+     * @param array $paths
+     * @return array
+     */
+    public static function size(array $paths): array
+    {
+        $files = 0;
+        $size  = 0;
+
+        foreach ($paths as $path) {
+            if (file_exists($path) === false && is_link($path) === false) {
+                continue;
+            }
+
+            if (is_dir($path) === false || is_link($path) === true) {
+                $files++;
+                $size += is_link($path) === true ? 0 : (int)@filesize($path);
+                continue;
+            }
+
+            foreach (static::files($path) as $file) {
+                $files++;
+                $size += $file->isLink() === true ? 0 : $file->getSize();
+            }
+        }
+
+        return [
+            'files'    => $files,
+            'size'     => $size,
+            'niceSize' => F::niceSize($size)
+        ];
     }
 }
