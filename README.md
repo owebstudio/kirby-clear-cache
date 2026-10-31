@@ -1,4 +1,4 @@
-![Clear Cache, a Kirby plugin by oweb studio. Clear the cache, media and temporary files from the Panel.](.github/cover.png)
+![Clear Cache, a Kirby plugin by oweb studio. Clear caches, media and temporary files from the Panel or the command line.](.github/cover.png)
 
 # Kirby Clear Cache
 
