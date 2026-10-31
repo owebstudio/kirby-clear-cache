@@ -13,10 +13,15 @@ Kirby::plugin('owebstudio/clear-cache', [
     'permissions' => [
         'clear' => false
     ],
+    'translations' => [
+        'de' => require __DIR__ . '/translations/de.php',
+        'en' => require __DIR__ . '/translations/en.php',
+        'tr' => require __DIR__ . '/translations/tr.php'
+    ],
     'areas' => [
         'clear-cache' => function () {
             return [
-                'label' => 'Clear cache',
+                'label' => t('owebstudio.clear-cache.title'),
                 'icon' => 'trash',
                 'menu' => function () {
                     return ClearCache::canClear();
@@ -32,7 +37,7 @@ Kirby::plugin('owebstudio/clear-cache', [
 
                             return [
                                 'component' => 'clearcache',
-                                'title' => 'Clear cache',
+                                'title' => t('owebstudio.clear-cache.title'),
                                 'props' => ClearCache::view(),
                             ];
                         }
@@ -46,7 +51,7 @@ Kirby::plugin('owebstudio/clear-cache', [
 
                         return [
                             'icon' => 'trash',
-                            'text' => 'Clear cache',
+                            'text' => t('owebstudio.clear-cache.title'),
                             'options' => 'clear-cache'
                         ];
                     }

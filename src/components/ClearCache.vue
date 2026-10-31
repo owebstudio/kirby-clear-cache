@@ -1,36 +1,39 @@
 <template>
   <k-panel-inside class="k-clearcache-view">
-    <k-header>Clear cache</k-header>
+    <k-header>{{ $t("owebstudio.clear-cache.title") }}</k-header>
 
     <k-box
+      :text="$t('owebstudio.clear-cache.intro')"
       class="k-clearcache-intro"
       icon="info"
       theme="info"
-      text="Everything listed here is temporary. Kirby creates it again when it is needed."
     />
 
     <k-section
       v-for="group in groups"
       :key="group.type"
       :buttons="group.buttons"
-      :label="group.label"
+      :label="$t('owebstudio.clear-cache.' + group.type)"
     >
       <k-table
         :columns="columns"
+        :empty="$t('owebstudio.clear-cache.empty')"
         :index="false"
         :rows="group.rows"
-        empty="Nothing to clear"
       >
         <template #options="{ row }">
           <k-button
+            :title="$t('owebstudio.clear-cache.clear')"
             icon="trash"
             size="sm"
-            title="Clear"
             @click="clear(group.type, row.name)"
           />
         </template>
       </k-table>
-      <k-text :text="group.help" class="k-help k-clearcache-help" />
+      <k-text
+        :text="$t('owebstudio.clear-cache.' + group.type + '.help')"
+        class="k-help k-clearcache-help"
+      />
     </k-section>
   </k-panel-inside>
 </template>
@@ -51,36 +54,20 @@ export default {
   computed: {
     columns() {
       return {
-        text: { label: "Name", mobile: true },
-        info: { label: "Location" },
-        files: { label: "Files", align: "right", width: "1/8" },
-        size: { label: "Size", align: "right", width: "1/8", mobile: true }
+        text: { label: this.$t("owebstudio.clear-cache.name"), mobile: true },
+        info: { label: this.$t("owebstudio.clear-cache.location") },
+        files: { label: this.$t("owebstudio.clear-cache.files"), align: "right", width: "1/8" },
+        size: { label: this.$t("owebstudio.clear-cache.size"), align: "right", width: "1/8", mobile: true }
       };
     },
     groups() {
-      return [
-        {
-          type: "cache",
-          label: "Cache",
-          help: "The caches of Kirby and your plugins. Each cache is cleared for all domains of your site and for the command line."
-        },
-        {
-          type: "media",
-          label: "Media",
-          help: "Copies of your files, thumbnails and the assets of the Panel and your plugins. Kirby creates them again when they are requested. Clearing media files also clears the pages cache, so that cached pages don't link to missing thumbnails."
-        },
-        {
-          type: "other",
-          label: "Other",
-          help: "Kirby 5 and newer keep content locks with the unsaved changes. Old lock files from Kirby 3 and 4 make Kirby ignore these locks. Clearing the failed login attempts unblocks users and IP addresses."
-        }
-      ].map((group) => {
-        const rows = this.rows(group.type);
+      return ["cache", "media", "other"].map((type) => {
+        const rows = this.rows(type);
 
         return {
-          ...group,
+          type,
           rows,
-          buttons: rows.length ? [{ icon: "trash", text: "Clear all", dialog: "clear-cache/" + group.type }] : null
+          buttons: rows.length ? [{ icon: "trash", text: this.$t("owebstudio.clear-cache.clear.all"), dialog: "clear-cache/" + type }] : null
         };
       });
     }
@@ -105,7 +92,7 @@ export default {
         dir: dir,
       });
 
-      this.$panel.notification.success("Cleared");
+      this.$panel.notification.success(this.$t("owebstudio.clear-cache.cleared"));
       await this.$panel.view.reload();
     },
     async load() {

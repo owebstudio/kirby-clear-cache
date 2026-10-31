@@ -121,12 +121,7 @@ class ClearCache
             $dirs[$name] = [
                 'name' => $name,
                 'path' => $paths,
-                'text' => match ($name) {
-                    'pages'   => 'Pages',
-                    'uuid'    => 'UUIDs',
-                    'updates' => 'Updates',
-                    default   => $name
-                },
+                'text' => t('owebstudio.clear-cache.cache.' . $name, $name),
                 'info' => match (true) {
                     $cache instanceof FileCache === false => preg_replace('/Cache$/', '', (new ReflectionClass($cache))->getShortName()),
                     count($paths) > 1                    => static::relativePath('cache', '*/' . static::cacheKey($cache)),
@@ -274,7 +269,7 @@ class ClearCache
             $dirs[$basename] = [
                 'name' => $basename,
                 'path' => $dir,
-                'text' => $basename,
+                'text' => t('owebstudio.clear-cache.' . $root . '.' . $basename, $basename),
                 'info' => static::relativePath($root, $basename)
             ];
         }
@@ -293,7 +288,7 @@ class ClearCache
         $dirs['lock'] = [
             'name' => 'lock',
             'path' => null,
-            'text' => 'Lock files from Kirby 3 and 4',
+            'text' => t('owebstudio.clear-cache.lock'),
             'info' => static::relative(kirby()->root('content')) . ', ' . static::relative(kirby()->root('accounts'))
         ];
 
@@ -303,7 +298,7 @@ class ClearCache
             $dirs['logins'] = [
                 'name' => 'logins',
                 'path' => $loginsFile,
-                'text' => 'Users login data',
+                'text' => t('owebstudio.clear-cache.logins'),
                 'info' => static::relativePath('accounts', '.logins')
             ];
         }
@@ -374,7 +369,7 @@ class ClearCache
 
         if (isset(static::props()['cache']['pages']) === true) {
             $options[] = [
-                'text' => 'Clear pages cache',
+                'text' => t('owebstudio.clear-cache.dropdown.pages'),
                 'icon' => 'page',
                 'dialog' => 'clear-cache/cache/pages'
             ];
@@ -383,18 +378,18 @@ class ClearCache
         return [
             ...$options,
             [
-                'text' => 'Clear all caches',
+                'text' => t('owebstudio.clear-cache.dropdown.cache'),
                 'icon' => 'server',
                 'dialog' => 'clear-cache/cache'
             ],
             [
-                'text' => 'Clear all media files',
+                'text' => t('owebstudio.clear-cache.dropdown.media'),
                 'icon' => 'image',
                 'dialog' => 'clear-cache/media'
             ],
             '-',
             [
-                'text' => 'Show all',
+                'text' => t('owebstudio.clear-cache.dropdown.view'),
                 'icon' => 'list-bullet',
                 'link' => 'clear-cache'
             ]
@@ -422,18 +417,18 @@ class ClearCache
         }
 
         $text = match (true) {
-            $dir === 'logins' => 'Do you really want to reset the failed login attempts? Blocked users and IP addresses can log in again.',
-            $dir !== null     => 'Do you really want to clear "' . $item['text'] . '"?',
-            $type === 'cache' => 'Do you really want to clear all caches?',
-            $type === 'media' => 'Do you really want to clear all media files? The pages cache is cleared as well.',
-            default           => 'Do you really want to remove the old lock files and reset the failed login attempts?'
+            $dir === 'logins' => t('owebstudio.clear-cache.confirm.logins'),
+            $dir !== null     => tt('owebstudio.clear-cache.confirm', ['name' => $item['text']]),
+            $type === 'cache' => t('owebstudio.clear-cache.confirm.cache'),
+            $type === 'media' => t('owebstudio.clear-cache.confirm.media'),
+            default           => t('owebstudio.clear-cache.confirm.other')
         };
 
         return [
             'component' => 'k-remove-dialog',
             'props' => [
                 'text' => $text,
-                'submitButton' => $dir === null ? 'Clear all' : 'Clear'
+                'submitButton' => t($dir === null ? 'owebstudio.clear-cache.clear.all' : 'owebstudio.clear-cache.clear')
             ]
         ];
     }
@@ -451,7 +446,7 @@ class ClearCache
         $dir === null ? static::clearType($type) : static::clearDir($type, $dir);
 
         return [
-            'message' => 'Cleared'
+            'message' => t('owebstudio.clear-cache.cleared')
         ];
     }
 
