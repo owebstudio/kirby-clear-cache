@@ -181,6 +181,11 @@ class ClearCache
                 }
 
                 static::remove($dir['path']);
+
+                // cached pages would link to thumbs whose jobs are gone
+                if ($type === 'media' && in_array($dir['name'], ['panel', 'plugins'], true) === false) {
+                    kirby()->cache('pages')->flush();
+                }
                 break;
             case 'other':
                 switch ($dir['name']) {
