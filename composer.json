@@ -2,6 +2,7 @@
   "name": "owebstudio/kirby-clear-cache",
   "description": "Clears the caches, media files and other temporary files of your Kirby site from the Panel or the command line.",
   "type": "kirby-plugin",
+  "version": "2.0.0",
   "license": "MIT",
   "keywords": [
     "owebstudio",
